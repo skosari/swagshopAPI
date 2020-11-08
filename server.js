@@ -7,11 +7,12 @@ var db = mongoose.connect('mongodb://localhost/swagshop', {useNewUrlParser: true
 
 var Product = require('./model/product');
 var WishList = require('./model/wishList');
+const { request } = require('express');
 
 app.use(bodyParser.json());
 app.use(bodyParser.urlencoded({extended: false}));
 
-app.post('/product', function(request, response){
+app.post('/product', function(request, response){//The first post will create the db and post to it so we can "show dbs" and "use swagshop"
   var product = new Product();
   product.title = request.body.title;
   product.price = request.body.price;
@@ -34,9 +35,66 @@ app.post('/product', function(request, response){
 //   var product = new Product({title: res.body.title, price: res.body.price});
 // })
 
-app.post('/wishlist', function(req, res) {
-  var wishListItem = new WishList(req.body);
+app.get('/product', function(req, res){
+  Product.find({}, function(err, products){//The empty brackets will return all fields
+    if(err){
+      res.status(500).send({error: "We've got a problem hoss"});
+    }else{
+      res.send(products);
+    }
+  })
 })
+
+
+
+app.get('/wishlist', function(req,res){
+  //We find all wishlist items and populate the product info from the id we linked in wishlist.js products:[{type: ObjectId, ref: 'Product'}]
+  //In app.put we linked the id but were unable to get the product infor only the id # so to prevent needing to call the wishlist twice using the id we got from app.put we can use the populate function to return the product info - the giveaway is when our put only returns the id info
+  WishList.find({}).populate({path:'products', model: 'Product'}).exec(function(err, wishlists){
+    if(err){
+      res.status(500).send({error:"Could not fetch wishlists"})
+    }else{
+      res.send(wishlists)
+    }
+  })
+})
+
+app.post('/wishlist', function(req, res) {
+  var wishList = new WishList();
+  wishList.title = req.body.title;
+
+  wishList.save(function(err,savedWishList){
+    if(err){
+      res.status(500).send({error:"Houston we've got a problem"})
+    }else{
+      res.send(savedWishList)
+    }
+  })
+})
+
+app.put('/wishlist/product/add', function(req, res){
+  Product.findOne(
+    {_id: req.body.productId}, 
+    function(err, product){
+      if(err){
+        res.status(500).send({error:"Could not add product to wishlist"})
+      }else{
+        WishList.update(
+          {_id:req.body.wishListId},//in wishlist.js - products:[{type: ObjectId, ref: 'Product'}] 
+          {$addToSet:{products: product._id}},//$addToSet is a func that adds our item to the set in this case we only want to add our product _id
+          function(err){
+            if(err){
+              res.status(500).send({error:"Could not addToSet - product _id"})
+            }else{
+              res.send("Successfully added to wishlist")
+            }
+          }
+        )
+      }
+    }
+  )
+})//IN POSTMAN {"productId":"paste product id", "wishListId":"paste wishlist id"}
+
 
 app.listen(3001, function() {
   console.log("Swag shop is running on port 3001...")
